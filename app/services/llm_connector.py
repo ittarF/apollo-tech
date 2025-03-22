@@ -24,6 +24,7 @@ class OllamaConnector:
             timeout: Request timeout in seconds
         """
         self.base_url = base_url
+        # Handle model names that may include version (like gemma3:12b)
         self.model = model
         self.timeout = timeout
         self.client = httpx.AsyncClient(timeout=timeout)
@@ -140,16 +141,19 @@ class OllamaConnector:
         # Combine context components
         system_prompt = (
             "You are an AI assistant with access to tools. "
-            "When appropriate, use tools to fulfill user requests. "
-            "To use a tool, respond with JSON in the format: "
-            "{'tool_call': {'name': 'tool_name', 'parameters': {...}}}"
+            "Use these tools when appropriate to fulfill user requests. "
+            "Always be helpful, accurate, and concise. "
+            "IMPORTANT: You must remember all previously shared information within the conversation. "
+            "If the user shares their name or preferences, remember this information for the duration of the conversation."
             f"\n\n{tools_context}"
         )
         
+        # Format the final prompt with conversation history
+        final_prompt = prompt
         if conversation_context:
-            prompt = f"Previous conversation:\n{conversation_context}\n\nUser: {prompt}"
+            final_prompt = f"Previous conversation:\n{conversation_context}\n\nCurrent user message: {prompt}"
         
-        return await self.generate_response(prompt=prompt, system_prompt=system_prompt)
+        return await self.generate_response(prompt=final_prompt, system_prompt=system_prompt)
     
     async def close(self):
         """Close the HTTP client."""
