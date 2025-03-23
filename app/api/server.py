@@ -22,6 +22,13 @@ TOOL_MANAGER_URL = os.environ.get("TOOL_MANAGER_URL", "http://localhost:8000")
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 DEFAULT_MODEL = os.environ.get("DEFAULT_MODEL", "gemma3")
 
+# Initialize a single Agent instance for all requests
+agent_instance = Agent(
+    tool_manager_url=TOOL_MANAGER_URL,
+    ollama_base_url=OLLAMA_BASE_URL,
+    model=DEFAULT_MODEL,
+)
+
 # Define request and response models
 class UserRequest(BaseModel):
     input: str
@@ -50,17 +57,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Create a dependency for the Agent
+# Create a dependency that returns the singleton agent
 async def get_agent():
-    agent = Agent(
-        tool_manager_url=TOOL_MANAGER_URL,
-        ollama_base_url=OLLAMA_BASE_URL,
-        model=DEFAULT_MODEL,
-    )
-    try:
-        yield agent
-    finally:
-        await agent.close()
+    return agent_instance
 
 @app.get("/")
 async def root():
@@ -143,4 +142,11 @@ async def get_conversation(conversation_id: str, agent: Agent = Depends(get_agen
         raise
     except Exception as e:
         logger.error(f"Error getting conversation: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Error getting conversation: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"Error getting conversation: {str(e)}")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Close resources when application shuts down."""
+    logger.info("Shutting down API server, closing resources...")
+    await agent_instance.close()
+    logger.info("Resources closed successfully") 

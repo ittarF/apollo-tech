@@ -277,6 +277,7 @@ class Agent:
         }
     
     async def close(self):
-        """Clean up resources."""
+        """Close the HTTP client and resources."""
+        await self.http_client.aclose()
         await self.llm_connector.close()
-        await self.http_client.aclose() 
+        logger.info("Agent resources closed") 
