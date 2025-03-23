@@ -15,12 +15,12 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8080"))
     
     # Set the correct model name
-    os.environ["DEFAULT_MODEL"] = "gemma3:12b"
+    os.environ["DEFAULT_MODEL"] = "gemma3"
     
     logger.info(f"Starting Agent API server on {host}:{port}")
     logger.info(f"Tool Manager URL: {os.environ.get('TOOL_MANAGER_URL', 'http://localhost:8000')}")
     logger.info(f"Ollama Base URL: {os.environ.get('OLLAMA_BASE_URL', 'http://localhost:11434')}")
-    logger.info(f"Default LLM Model: {os.environ.get('DEFAULT_MODEL', 'gemma3:12b')}")
+    logger.info(f"Default LLM Model: {os.environ.get('DEFAULT_MODEL', 'gemma3')}")
     
     # Start the server
     uvicorn.run(
