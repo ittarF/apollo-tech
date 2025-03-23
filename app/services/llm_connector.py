@@ -62,6 +62,7 @@ class OllamaConnector:
             payload["max_tokens"] = max_tokens
         
         try:
+            # print(f"Sending request to Ollama API: {payload}")
             logger.debug(f"Sending request to Ollama API: {payload}")
             response = await self.client.post(url, json=payload)
             response.raise_for_status()

@@ -233,7 +233,7 @@ class ContextManager:
         
         # System message that instructs the model
         system_message = (
-            "You are an smartAI assistant with access to tools. "
+            "You are a  smart AI assistant with access to tools. "
             "Use these tools when appropriate to fulfill user requests. "
             "Always be helpful, accurate, and concise. "
             "IMPORTANT: You must remember all previously shared information within the conversation. "

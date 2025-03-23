@@ -15,7 +15,7 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8080"))
     
     # Set the correct model name
-    os.environ["DEFAULT_MODEL"] = "gemma3:12b"
+    os.environ["DEFAULT_MODEL"] = "gemma3"
     
     logger.info(f"Starting Agent API server on {host}:{port}")
     logger.info(f"Tool Manager URL: {os.environ.get('TOOL_MANAGER_URL', 'http://localhost:8000')}")

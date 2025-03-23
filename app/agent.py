@@ -264,6 +264,7 @@ class Agent:
             tool_result = await self._execute_tool(tool_call)
             
             # Update the tool call with the result
+            # TODO: fix to exclude useless tokens
             self.context_manager.add_tool_call(
                 conversation_id=conversation_id,
                 tool_name=tool_call.get("name", "unknown"),
