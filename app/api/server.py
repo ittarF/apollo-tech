@@ -4,9 +4,10 @@ import logging
 import uuid
 from typing import Dict, Any, Optional, List
 
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 
 from app.agent import Agent
 
@@ -40,6 +41,7 @@ class AgentResponse(BaseModel):
     tool_used: Optional[str] = None
     tool_parameters: Optional[Dict[str, Any]] = None
     tool_result: Optional[Dict[str, Any]] = None
+    debug_info: Optional[Dict[str, Any]] = None
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -66,8 +68,8 @@ async def root():
     """Health check endpoint."""
     return {"status": "online", "message": "Agent API is running"}
 
-@app.post("/process", response_model=AgentResponse)
-async def process_input(request: UserRequest, agent: Agent = Depends(get_agent)):
+@app.post("/process")
+async def process_input(request: UserRequest, agent: Agent = Depends(get_agent), req: Request = None):
     """
     Process user input and return agent response.
     
@@ -79,10 +81,16 @@ async def process_input(request: UserRequest, agent: Agent = Depends(get_agent))
     try:
         logger.info(f"Received request: {request.input[:50]}...")
         
+        # Get debug flag from request headers
+        debug_mode = False
+        if req and "x-debug-mode" in req.headers:
+            debug_mode = req.headers.get("x-debug-mode").lower() == "true"
+        
         # Process the input through the agent
         result = await agent.process_input(
             user_input=request.input,
-            conversation_id=request.conversation_id
+            conversation_id=request.conversation_id,
+            debug_mode=debug_mode
         )
         
         return AgentResponse(**result)

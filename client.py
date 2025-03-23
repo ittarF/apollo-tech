@@ -15,7 +15,7 @@ CONVERSATION_STORE = "conversation_store.json"
 
 console = Console()
 
-async def process_input(api_url, user_input, conversation_id=None):
+async def process_input(api_url, user_input, conversation_id=None, debug=False):
     """
     Send user input to the agent API and return the response.
     
@@ -23,6 +23,7 @@ async def process_input(api_url, user_input, conversation_id=None):
         api_url: API endpoint URL
         user_input: User's input text
         conversation_id: Optional conversation ID for continuing a conversation
+        debug: Whether to enable debug mode
         
     Returns:
         Agent's response and conversation ID
@@ -32,11 +33,24 @@ async def process_input(api_url, user_input, conversation_id=None):
     
     if conversation_id:
         payload["conversation_id"] = conversation_id
+    
+    # DEBUG: Show payload being sent to API
+    if debug:
+        console.print("[bold cyan]DEBUG - Sending payload:[/]")
+        console.print(json.dumps(payload, indent=2))
         
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(url, json=payload)
+            # Add a debug header only if debug mode is enabled
+            headers = {"X-Debug-Mode": "true"} if debug else {}
+            response = await client.post(url, json=payload, headers=headers)
             response.raise_for_status()
+            
+            # DEBUG: Show raw response from API
+            if debug:
+                console.print("[bold cyan]DEBUG - Raw API response:[/]")
+                console.print(json.dumps(response.json(), indent=2))
+            
             return response.json()
     except httpx.HTTPStatusError as e:
         console.print(f"[bold red]HTTP Error:[/] {e.response.status_code} - {e.response.text}")
@@ -64,12 +78,13 @@ def save_conversation_id(conversation_id):
     except Exception as e:
         console.print(f"[bold yellow]Warning:[/] Could not save conversation: {str(e)}")
 
-async def interactive_session(api_url):
+async def interactive_session(api_url, debug=False):
     """
     Start an interactive session with the agent.
     
     Args:
         api_url: API endpoint URL
+        debug: Whether to enable debug mode
     """
     # Load existing conversation ID if available
     conversation_id = load_conversation_id()
@@ -99,7 +114,7 @@ async def interactive_session(api_url):
             
         # Show processing indicator
         with console.status("[bold blue]Processing...[/]"):
-            result = await process_input(api_url, user_input, conversation_id)
+            result = await process_input(api_url, user_input, conversation_id, debug)
             
         if not result:
             continue
@@ -138,6 +153,11 @@ def main():
         action="store_true",
         help="Start a new conversation (ignore saved conversation ID)"
     )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable debug mode to see full API requests and responses"
+    )
     
     args = parser.parse_args()
     
@@ -147,7 +167,7 @@ def main():
         console.print("[bold yellow]Starting new conversation[/]")
     
     try:
-        asyncio.run(interactive_session(args.api_url))
+        asyncio.run(interactive_session(args.api_url, args.debug))
     except KeyboardInterrupt:
         console.print("\n[bold yellow]Session terminated by user[/]")
 

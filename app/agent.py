@@ -112,7 +112,22 @@ class Agent:
         text = response.get("response", "")
         tool_call = None
         
-        # First try to find a JSON object using regex pattern
+        # First try to parse directly as JSON
+        try:
+            # The response should already be a JSON string
+            parsed = json.loads(text)
+            if isinstance(parsed, dict):
+                # Extract the response text and tool call if available
+                text = parsed.get("response", text)
+                tool_call = parsed.get("tool_call")
+                return {
+                    "text": text.strip(),
+                    "tool_call": tool_call
+                }
+        except json.JSONDecodeError as e:
+            logger.warning(f"Failed to parse response as JSON: {str(e)}")
+        
+        # Fall back to regex patterns if direct parsing fails
         try:
             # Look for a JSON object that might contain a tool call
             json_pattern = r'\{(?:[^{}]|(?:\{[^{}]*\}))*\}'
@@ -124,8 +139,12 @@ class Agent:
                     parsed_json = json.loads(potential_json)
                     if "tool_call" in parsed_json:
                         tool_call = parsed_json["tool_call"]
-                        # Remove the JSON from the text
-                        text = text.replace(potential_json, "")
+                        # Use the response text if available
+                        if "response" in parsed_json:
+                            text = parsed_json["response"]
+                        else:
+                            # Remove the JSON from the text
+                            text = text.replace(potential_json, "")
                         break
                 except json.JSONDecodeError:
                     continue
@@ -133,27 +152,30 @@ class Agent:
         except Exception as e:
             logger.error(f"Error parsing LLM response with regex: {str(e)}")
         
-        # If regex approach failed, try the basic approach as fallback
-        if not tool_call:
+        # If all else fails, try the basic approach as a last resort
+        if not tool_call and "{" in text and "}" in text:
             try:
                 # Simple approach: find outermost { and }
-                if "{" in text and "}" in text:
-                    json_start = text.find("{")
-                    json_end = text.rfind("}") + 1
-                    
-                    potential_json = text[json_start:json_end]
-                    
-                    # Replace single quotes with double quotes for valid JSON
-                    potential_json = potential_json.replace("'", '"')
-                    
-                    try:
-                        parsed_json = json.loads(potential_json)
-                        if "tool_call" in parsed_json:
-                            tool_call = parsed_json["tool_call"]
+                json_start = text.find("{")
+                json_end = text.rfind("}") + 1
+                
+                potential_json = text[json_start:json_end]
+                
+                # Replace single quotes with double quotes for valid JSON
+                potential_json = potential_json.replace("'", '"')
+                
+                try:
+                    parsed_json = json.loads(potential_json)
+                    if "tool_call" in parsed_json:
+                        tool_call = parsed_json["tool_call"]
+                        # Use the response text if available
+                        if "response" in parsed_json:
+                            text = parsed_json["response"]
+                        else:
                             # Remove the JSON from the text
                             text = text[:json_start] + text[json_end:]
-                    except json.JSONDecodeError:
-                        logger.debug(f"Failed to parse JSON: {potential_json}")
+                except json.JSONDecodeError:
+                    logger.debug(f"Failed to parse JSON: {potential_json}")
             except Exception as e:
                 logger.error(f"Error in basic JSON parsing approach: {str(e)}")
         
@@ -164,7 +186,8 @@ class Agent:
     
     async def process_input(self, 
                          user_input: str, 
-                         conversation_id: Optional[str] = None) -> Dict[str, Any]:
+                         conversation_id: Optional[str] = None,
+                         debug_mode: bool = False) -> Dict[str, Any]:
         """
         Process user input and generate a response, potentially using tools.
         
@@ -178,6 +201,7 @@ class Agent:
         Args:
             user_input: User's input text
             conversation_id: Optional conversation ID (generates new ID if None)
+            debug_mode: Whether to include debug information in the response
             
         Returns:
             Response with assistant text and any tool usage information
@@ -198,12 +222,26 @@ class Agent:
             tools=relevant_tools
         )
         
+        # Create the debug info dictionary if debug mode is enabled
+        debug_info = {}
+        if debug_mode:
+            debug_info = {
+                "system_message": context.get("system_message", ""),
+                "conversation_history": context.get("conversation_history", ""),
+                "tools": [tool.get("name", "") for tool in relevant_tools],
+                "full_tools_info": relevant_tools
+            }
+        
         # Step 3: Generate initial response with LLM
         llm_response = await self.llm_connector.generate_with_tool_context(
             prompt=user_input,
             tools=relevant_tools,
-            conversation_context=context.get("conversation_history")
+            conversation_context=context.get("conversation_history"),
+            system_message=context.get("system_message")
         )
+        
+        if debug_mode:
+            debug_info["raw_llm_response"] = llm_response
         
         # Step 4: Parse the LLM response to check for tool calls
         parsed_response = await self._parse_llm_response(llm_response)
@@ -257,6 +295,10 @@ class Agent:
                     conversation_context=updated_context.get("conversation_history")
                 )
                 
+                if debug_mode:
+                    debug_info["follow_up_prompt"] = follow_up_prompt
+                    debug_info["raw_follow_up_response"] = follow_up_response
+                
                 parsed_follow_up = await self._parse_llm_response(follow_up_response)
                 response_text = parsed_follow_up.get("text", "")
         
@@ -268,13 +310,29 @@ class Agent:
         )
         
         # Return the final response with any tool usage information
-        return {
+        response = {
             "conversation_id": conversation_id,
             "response": response_text,
             "tool_used": tool_call.get("name") if tool_call else None,
             "tool_parameters": tool_call.get("parameters") if tool_call else None,
             "tool_result": tool_result
         }
+        
+        # Add debug info if debug mode is enabled
+        if debug_mode:
+            debug_info["raw_llm_response"] = llm_response
+            response["debug_info"] = debug_info
+            
+        # Log a warning if we didn't get a proper JSON response
+        if debug_mode and not tool_call and ("raw_llm_response" in debug_info):
+            raw_response = debug_info.get("raw_llm_response", {}).get("response", "")
+            try:
+                # Check if the raw response is valid JSON
+                json.loads(raw_response)
+            except json.JSONDecodeError:
+                logger.warning("LLM failed to respond with proper JSON formatting")
+                
+        return response
     
     async def close(self):
         """Close the HTTP client and resources."""

@@ -120,7 +120,8 @@ class OllamaConnector:
     async def generate_with_tool_context(self, 
                                    prompt: str, 
                                    tools: List[Dict[str, Any]],
-                                   conversation_context: Optional[str] = None) -> Dict[str, Any]:
+                                   conversation_context: Optional[str] = None,
+                                   system_message: Optional[str] = None) -> Dict[str, Any]:
         """
         Generate a response with tool definitions included in the context.
         
@@ -128,6 +129,7 @@ class OllamaConnector:
             prompt: The user prompt to send to the model
             tools: List of tool definitions to include in the context
             conversation_context: Additional conversation context
+            system_message: System message from context manager
             
         Returns:
             Dictionary containing the model's response
@@ -138,22 +140,61 @@ class OllamaConnector:
             tools_context += f"- {tool['name']}: {tool['description']}\n"
             tools_context += f"  Parameters: {json.dumps(tool['parameters'])}\n\n"
         
-        # Combine context components
-        system_prompt = (
-            "You are an AI assistant with access to tools. "
-            "Use these tools when appropriate to fulfill user requests. "
-            "Always be helpful, accurate, and concise. "
-            "IMPORTANT: You must remember all previously shared information within the conversation. "
-            "If the user shares their name or preferences, remember this information for the duration of the conversation."
-            f"\n\n{tools_context}"
+        # Use provided system message or create a default one
+        if not system_message:
+            system_message = (
+                "You are an AI assistant with access to tools. "
+                "Use these tools when appropriate to fulfill user requests. "
+                "Always be helpful, accurate, and concise. "
+                "IMPORTANT: You must remember all previously shared information within the conversation. "
+                "If the user shares their name or preferences, remember this information for the duration of the conversation."
+            )
+        
+        # Add specific formatting instructions
+        formatting_instructions = (
+            "\nYou MUST format ALL your responses as valid JSON objects with this structure:\n"
+            "```json\n"
+            "{\n"
+            "    \"response\": \"your helpful response text here\",\n"
+            "    \"tool_call\": null\n"
+            "}\n"
+            "```\n"
+            "When using a tool, set tool_call to a valid object like:\n"
+            "```json\n"
+            "{\n"
+            "    \"response\": \"I'll check that for you\",\n"
+            "    \"tool_call\": {\n"
+            "        \"name\": \"tool_name\",\n"
+            "        \"parameters\": {\n"
+            "            \"param1\": \"value1\"\n"
+            "        }\n"
+            "    }\n"
+            "}\n"
+            "```\n"
+            "ALWAYS respond in this JSON format. NEVER respond in plain text."
         )
+        
+        # Combine system message with tools context and formatting instructions
+        final_system_prompt = f"{system_message}\n\n{tools_context}\n{formatting_instructions}"
         
         # Format the final prompt with conversation history
         final_prompt = prompt
         if conversation_context:
             final_prompt = f"Previous conversation:\n{conversation_context}\n\nCurrent user message: {prompt}"
         
-        return await self.generate_response(prompt=final_prompt, system_prompt=system_prompt)
+        result = await self.generate_response(prompt=final_prompt, system_prompt=final_system_prompt)
+        
+        # Check if the response is not in JSON format and wrap it
+        response_text = result.get("response", "")
+        if not (response_text.startswith("{") and response_text.endswith("}")):
+            # The model didn't format properly, so we'll wrap it for them
+            logger.warning("LLM response not in JSON format, wrapping it automatically")
+            result["response"] = json.dumps({
+                "response": response_text,
+                "tool_call": None
+            })
+            
+        return result
     
     async def close(self):
         """Close the HTTP client."""

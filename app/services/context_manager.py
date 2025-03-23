@@ -232,11 +232,31 @@ class ContextManager:
         tool_context = self.get_tool_context(conversation_id)
         
         # System message that instructs the model
-        system_message = (
-            "You are an AI assistant with access to various tools. "
-            "Use these tools when appropriate to fulfill user requests. "
-            "Always be helpful, accurate, and concise."
-        )
+        system_message = ("""You are a helpful AI assistant. 
+
+IMPORTANT: You MUST format ALL your responses as valid JSON objects with this structure:
+```json
+{
+    "response": "your helpful response text here",
+    "tool_call": null
+}
+```
+
+When you need to use a tool, format your response as:
+```json
+{
+    "response": "your explanation of what you're doing",
+    "tool_call": {
+        "name": "name_of_tool",
+        "parameters": {
+            "param1": "value1",
+            "param2": "value2"
+        }
+    }
+}
+```
+
+NEVER respond in plain text. ALWAYS use this JSON format.""")
         
         # If we have tool context, add it to the system message
         if tool_context:
