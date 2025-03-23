@@ -12,8 +12,7 @@ services:
       - DEFAULT_MODEL=gemma3
       - ENVIRONMENT=production
     depends_on:
-      - ollama
-      - tool-manager
+      - ollama-service
     networks:
       - agent-network
     restart: unless-stopped
@@ -29,9 +28,24 @@ services:
       - tool-manager-data:/app/data
     restart: unless-stopped
 
-  ollama:
+  # Base Ollama configuration (CPU mode - macOS fallback)
+  ollama-service:
     image: ollama/ollama:latest
     container_name: ollama-service
+    profiles: [cpu]
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - agent-network
+    restart: unless-stopped
+
+  # NVIDIA-specific configuration
+  ollama-nvidia:
+    image: ollama/ollama:latest
+    container_name: ollama-service
+    profiles: [nvidia]
     ports:
       - "11434:11434"
     volumes:
@@ -44,6 +58,26 @@ services:
         reservations:
           devices:
             - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # AMD-specific configuration
+  ollama-amd:
+    image: ollama/ollama:latest
+    container_name: ollama-service
+    profiles: [amd]
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - agent-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: amd
               count: 1
               capabilities: [gpu]
 
