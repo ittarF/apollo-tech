@@ -184,16 +184,6 @@ class OllamaConnector:
             final_prompt = f"Previous conversation:\n{conversation_context}\n\nCurrent user message: {prompt}"
         
         result = await self.generate_response(prompt=final_prompt, system_prompt=final_system_prompt)
-        
-        # Check if the response is not in JSON format and wrap it
-        response_text = result.get("response", "")
-        if not (response_text.startswith("{") and response_text.endswith("}")):
-            # The model didn't format properly, so we'll wrap it for them
-            logger.warning("LLM response not in JSON format, wrapping it automatically")
-            result["response"] = json.dumps({
-                "response": response_text,
-                "tool_call": None
-            })
             
         return result
     

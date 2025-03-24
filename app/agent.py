@@ -112,14 +112,17 @@ class Agent:
         text = response.get("response", "")
         tool_call = None
         
-        # First try to parse directly as JSON
+        # First try to parse directly as JSON #1
         try:
             # The response should already be a JSON string
+            print(text)
             parsed = json.loads(text)
             if isinstance(parsed, dict):
                 # Extract the response text and tool call if available
                 text = parsed.get("response", text)
                 tool_call = parsed.get("tool_call")
+                print(f"AGENT PARSE LLM RESPONSE: TYPE: {type(parsed)}")
+                print(f"AGENT PARSE LLM RESPONSE: OUTPUT: {parsed}")
                 return {
                     "text": text.strip(),
                     "tool_call": tool_call
@@ -127,7 +130,18 @@ class Agent:
         except json.JSONDecodeError as e:
             logger.warning(f"Failed to parse response as JSON: {str(e)}")
         
-        # Fall back to regex patterns if direct parsing fails
+        # Try to extract JSON from markdown code blocks #2
+        try:
+            # Match both ```json and ``` code blocks
+            match = re.search(r'```(?:json)?\s*(.*?)\s*```', text, re.DOTALL)
+            if match:
+                data = json.loads(match.group(1))
+                return dict(**data)
+            
+        except (json.JSONDecodeError, AttributeError, IndexError):
+            pass
+        
+        # Fall back to regex patterns if direct parsing fails #3
         try:
             # Look for a JSON object that might contain a tool call
             json_pattern = r'\{(?:[^{}]|(?:\{[^{}]*\}))*\}'
@@ -152,7 +166,7 @@ class Agent:
         except Exception as e:
             logger.error(f"Error parsing LLM response with regex: {str(e)}")
         
-        # If all else fails, try the basic approach as a last resort
+        # If all else fails, try the basic approach as a last resort #4
         if not tool_call and "{" in text and "}" in text:
             try:
                 # Simple approach: find outermost { and }
@@ -250,6 +264,7 @@ class Agent:
         
         # Step 5: Execute tool if a tool call was detected
         tool_result = None
+        print(tool_call)
         if tool_call:
             logger.info(f"Tool call detected: {tool_call}")
             
