@@ -114,21 +114,18 @@ class Agent:
         
         # First try to parse directly as JSON #1
         try:
-            # The response should already be a JSON string
-            print(text)
             parsed = json.loads(text)
             if isinstance(parsed, dict):
                 # Extract the response text and tool call if available
                 text = parsed.get("response", text)
                 tool_call = parsed.get("tool_call")
-                print(f"AGENT PARSE LLM RESPONSE: TYPE: {type(parsed)}")
-                print(f"AGENT PARSE LLM RESPONSE: OUTPUT: {parsed}")
                 return {
                     "text": text.strip(),
                     "tool_call": tool_call
                 }
         except json.JSONDecodeError as e:
-            logger.warning(f"Failed to parse response as JSON: {str(e)}")
+            pass
+            # logger.warning(f"Failed to parse response as JSON: {str(e)}")
         
         # Try to extract JSON from markdown code blocks #2
         try:
@@ -136,7 +133,7 @@ class Agent:
             match = re.search(r'```(?:json)?\s*(.*?)\s*```', text, re.DOTALL)
             if match:
                 data = json.loads(match.group(1))
-                return dict(**data)
+                return dict(**data) # TODO: use pydantic models
             
         except (json.JSONDecodeError, AttributeError, IndexError):
             pass
@@ -259,12 +256,11 @@ class Agent:
         
         # Step 4: Parse the LLM response to check for tool calls
         parsed_response = await self._parse_llm_response(llm_response)
-        response_text = parsed_response.get("text", "")
+        response_text = parsed_response.get("response", "")
         tool_call = parsed_response.get("tool_call")
         
         # Step 5: Execute tool if a tool call was detected
         tool_result = None
-        print(tool_call)
         if tool_call:
             logger.info(f"Tool call detected: {tool_call}")
             
@@ -316,7 +312,7 @@ class Agent:
                     debug_info["raw_follow_up_response"] = follow_up_response
                 
                 parsed_follow_up = await self._parse_llm_response(follow_up_response)
-                response_text = parsed_follow_up.get("text", "")
+                response_text = parsed_follow_up.get("response", "")
         
         # Step 6: Record the assistant's response in the context
         self.context_manager.add_message(
@@ -347,7 +343,7 @@ class Agent:
                 json.loads(raw_response)
             except json.JSONDecodeError:
                 logger.warning("LLM failed to respond with proper JSON formatting")
-                
+
         return response
     
     async def close(self):
